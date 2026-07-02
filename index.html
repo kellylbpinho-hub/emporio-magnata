@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Empório Magnata — App de Gestão</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#0f0d0c; --bg2:#1c1916; --card:#211d1a; --cardBorder:#332c26;
+    --red:#c0392b; --redDark:#6b1f1f; --redGlow:rgba(192,57,43,0.35);
+    --cream:#f6f1ea; --muted:#a89a8a; --mutedDark:#7a6e62;
+    --green:#3fae5a; --greenBg:rgba(63,174,90,0.15);
+    --amber:#d9a441; --amberBg:rgba(217,164,65,0.15);
+    --blueish:#5c7a8a; --blueishBg:rgba(92,122,138,0.15);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:'Segoe UI',Arial,sans-serif; background:var(--bg); color:var(--cream);
+    min-height:100vh;
+  }
+  header{
+    background:linear-gradient(160deg,#1c1916 0%,#2b2118 55%,#6b1f1f 100%);
+    padding:20px 24px 28px 24px; position:relative; overflow:hidden;
+  }
+  header:after{
+    content:""; position:absolute; top:-40%; right:-10%; width:300px; height:300px;
+    background:radial-gradient(circle, var(--redGlow) 0%, transparent 70%); pointer-events:none;
+  }
+  header .top{ display:flex; justify-content:space-between; align-items:center; position:relative; z-index:1;}
+  header h1{margin:0; font-size:19px; font-weight:800;}
+  header .sub{font-size:11.5px; color:#d8c9b8; margin-top:2px;}
+  .conn-status{ display:flex; align-items:center; gap:6px; font-size:10.5px; padding:5px 11px; border-radius:20px; background:rgba(255,255,255,0.08); cursor:pointer; }
+  .conn-dot{ width:7px; height:7px; border-radius:50%; }
+  .conn-dot.on{ background:var(--green); box-shadow:0 0 6px var(--green); }
+  .conn-dot.off{ background:var(--amber); box-shadow:0 0 6px var(--amber); }
+
+  nav{
+    display:flex; background:var(--bg2); border-bottom:1px solid var(--cardBorder); padding:0 14px; gap:2px; overflow-x:auto;
+    position:sticky; top:0; z-index:10;
+  }
+  nav button{
+    background:none; border:none; padding:13px 14px; font-size:12.5px; font-weight:700; color:var(--muted);
+    cursor:pointer; border-bottom:3px solid transparent; white-space:nowrap;
+  }
+  nav button.active{ color:var(--red); border-bottom-color:var(--red); }
+  nav button{ display:inline-flex; align-items:center; gap:7px; }
+  .navico{ width:16px; height:16px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .brand-logo{ flex-shrink:0; filter:drop-shadow(0 2px 6px rgba(0,0,0,0.4)); }
+  header h1{ display:flex; align-items:center; gap:0; }
+  main{ padding:18px 18px 70px 18px; max-width:1100px; margin:0 auto; }
+  .tab{ display:none; }
+  .tab.active{ display:block; animation:fade .2s ease; }
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  h2{ font-size:17px; margin:0 0 4px 0; color:var(--cream); }
+  .lead{ color:var(--muted); font-size:12px; margin-bottom:16px; }
+
+  /* ---- dashboard cards ---- */
+  .dash-grid{ display:grid; grid-template-columns:1.4fr 1fr 1fr; grid-template-rows:auto auto; gap:12px; margin-bottom:16px;}
+  @media(max-width:780px){ .dash-grid{ grid-template-columns:1fr 1fr;} }
+  @media(max-width:520px){ .dash-grid{ grid-template-columns:1fr;} }
+  .dcard{
+    background:var(--card); border:1px solid var(--cardBorder); border-radius:16px; padding:18px;
+    position:relative; overflow:hidden;
+  }
+  .dcard.tall{ grid-row:span 2; }
+  .dcard.glow-red{ background:linear-gradient(160deg, rgba(192,57,43,0.18), var(--card) 60%); border-color:rgba(192,57,43,0.35); }
+  .dcard.glow-green{ background:linear-gradient(160deg, rgba(63,174,90,0.16), var(--card) 60%); border-color:rgba(63,174,90,0.3); }
+  .dcard.glow-amber{ background:linear-gradient(160deg, rgba(217,164,65,0.16), var(--card) 60%); border-color:rgba(217,164,65,0.3); }
+  .dcard .dtitle{ font-size:13px; font-weight:700; color:var(--cream); margin-bottom:2px;}
+  .dcard .dsub{ font-size:10.5px; color:var(--mutedDark); margin-bottom:14px;}
+  .dcard .dbig{ font-size:26px; font-weight:800; }
+  .dcard .dtag{ display:inline-block; margin-top:8px; font-size:10.5px; padding:3px 10px; border-radius:20px; }
+  .sparkline{ display:flex; align-items:flex-end; gap:3px; height:46px; margin-top:6px; }
+  .sparkline span{ flex:1; background:var(--green); border-radius:2px 2px 0 0; opacity:.85; }
+  .qa-row{ display:flex; gap:10px; }
+  .qa{ flex:1; text-align:center; background:rgba(255,255,255,0.04); border:1px solid var(--cardBorder); border-radius:12px; padding:12px 6px; cursor:pointer; }
+  .qa:hover{ border-color:var(--red); }
+  .qa .ico{ font-size:18px; }
+  .qaico{ width:20px; height:20px; stroke:#e8b4a8; margin:0 auto; display:block; }
+  .qa .lab{ font-size:10px; color:var(--muted); margin-top:4px; }
+
+  .grid{ display:grid; gap:14px; }
+  .grid.cols2{ grid-template-columns:1fr 1fr; }
+  .grid.cols3{ grid-template-columns:1fr 1fr 1fr; }
+  .grid.cols4{ grid-template-columns:1fr 1fr 1fr 1fr; }
+  @media(max-width:780px){ .grid.cols2,.grid.cols3,.grid.cols4{grid-template-columns:1fr;} }
+  .card{ background:var(--card); border:1px solid var(--cardBorder); border-radius:14px; padding:16px; }
+  .card h3{ margin:0 0 10px 0; font-size:12.5px; text-transform:uppercase; letter-spacing:.5px; color:#e8b4a8; }
+  label{ display:block; font-size:11px; font-weight:700; color:var(--muted); margin-bottom:4px; margin-top:10px; }
+  label:first-child{ margin-top:0; }
+  input,select{
+    width:100%; padding:9px 10px; border:1px solid var(--cardBorder); border-radius:8px; font-size:13px;
+    background:#15120f; color:var(--cream);
+  }
+  input:focus,select:focus{ outline:2px solid var(--red); outline-offset:-1px; }
+  button.btn{
+    background:var(--red); color:#fff; border:none; padding:10px 18px; border-radius:8px; font-size:13px;
+    font-weight:700; cursor:pointer; margin-top:12px;
+  }
+  button.btn:hover{ background:var(--redDark); }
+  button.btn.secondary{ background:transparent; color:var(--red); border:1px solid var(--red); }
+  button.btn-sm{ padding:4px 9px; font-size:11px; border-radius:6px; border:none; cursor:pointer; }
+  .kpi-row{ display:flex; gap:10px; margin:14px 0; flex-wrap:wrap; }
+  .kpi{ flex:1; min-width:130px; background:var(--card); border:1px solid var(--cardBorder); border-radius:12px; padding:12px; text-align:center; }
+  .kpi .v{ font-size:19px; font-weight:800; color:var(--red); }
+  .kpi .l{ font-size:9px; color:var(--mutedDark); text-transform:uppercase; margin-top:2px; }
+  table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:12px; }
+  th{ background:var(--bg2); color:var(--muted); text-align:left; padding:8px 10px; font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--cardBorder); }
+  td{ padding:8px 10px; border-bottom:1px solid var(--cardBorder); color:var(--cream); }
+  tr:hover td{ background:rgba(255,255,255,0.02); }
+  td.num,th.num{ text-align:right; }
+  .badge{ padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; }
+  .badge-green{ background:var(--greenBg); color:var(--green); }
+  .badge-red{ background:rgba(192,57,43,0.15); color:#e08070; }
+  .formula{ background:#0a0908; border:1px solid var(--cardBorder); color:#f5ede2; font-family:Consolas,monospace; padding:12px 14px; border-radius:8px; font-size:12px; text-align:center; margin-bottom:14px; }
+  .result-box{ background:linear-gradient(135deg, var(--redDark), #2b2118); border-radius:14px; padding:18px; margin-top:14px; }
+  .result-box .big{ font-size:24px; font-weight:800; color:#fff; }
+  .result-box .label{ font-size:9.5px; color:#e8c9b8; text-transform:uppercase; }
+  .delbtn{ background:rgba(192,57,43,0.15); color:#e08070; }
+  .empty{ color:var(--mutedDark); font-size:12px; padding:14px; text-align:center; font-style:italic; }
+  .footer-note{ font-size:10.5px; color:var(--mutedDark); margin-top:6px; }
+  .save-indicator{ position:fixed; bottom:18px; right:18px; background:var(--green); color:#fff; padding:8px 16px; border-radius:20px; font-size:12px; font-weight:700; opacity:0; transition:opacity .3s; pointer-events:none; z-index:50;}
+  .save-indicator.show{ opacity:1; }
+  .config-banner{ background:var(--amberBg); border:1px solid rgba(217,164,65,0.4); color:var(--amber); border-radius:10px; padding:10px 14px; font-size:12px; margin-bottom:14px; cursor:pointer; }
+  .scan-btn{ background:var(--bg2); color:#fff; border:1px solid var(--cardBorder); padding:9px 12px; border-radius:8px; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px; }
+  .scan-btn:hover{ border-color:var(--red); }
+  .modal-overlay{ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:100; align-items:center; justify-content:center; }
+  .modal-overlay.show{ display:flex; }
+  .modal-box{ background:var(--card); border:1px solid var(--cardBorder); border-radius:16px; padding:18px; width:92%; max-width:420px; }
+  .modal-box h3{ margin:0 0 10px 0; font-size:14px; color:var(--cream); display:flex; justify-content:space-between; align-items:center; }
+  .modal-box .closeX{ cursor:pointer; color:var(--muted); font-size:18px; }
+  #scannerView{ width:100%; border-radius:10px; overflow:hidden; background:#000; min-height:240px; }
+  .scan-hint{ font-size:11px; color:var(--muted); margin-top:8px; text-align:center; }
+  .scan-result{ background:rgba(63,174,90,0.12); border:1px solid rgba(63,174,90,0.3); border-radius:8px; padding:10px; margin-top:10px; font-size:12px; }
+
+  .table-wrap{ width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+  /* ===================== MOBILE ===================== */
+  @media(max-width:640px){
+    header{ padding:14px 14px 64px 14px; }
+    header .top{ flex-wrap:wrap; gap:10px; }
+    header h1{ font-size:16px; }
+    header .sub{ font-size:10.5px; }
+    .brand-logo{ width:34px; height:34px; }
+    .conn-status{ position:absolute; top:14px; right:14px; font-size:9.5px; padding:4px 9px; }
+
+    nav{ position:fixed; bottom:0; left:0; right:0; top:auto; z-index:30;
+      justify-content:space-around; padding:4px 2px; border-top:1px solid var(--cardBorder); border-bottom:none;
+      box-shadow:0 -4px 14px rgba(0,0,0,0.35); }
+    nav button{ flex:1; flex-direction:column; gap:3px; padding:7px 2px; font-size:9.5px; border-bottom:none;
+      border-radius:10px; }
+    nav button.active{ background:rgba(192,57,43,0.12); }
+    .navico{ width:19px; height:19px; }
+    main{ padding:14px 12px 84px 12px; }
+
+    .dash-grid{ grid-template-columns:1fr; }
+    .dcard.tall{ grid-row:auto; }
+    .dcard{ padding:14px; }
+    .dcard .dbig{ font-size:21px; }
+    .qa-row{ flex-wrap:wrap; }
+    .qa{ flex:1 1 40%; min-width:40%; }
+
+    .grid.cols2,.grid.cols3,.grid.cols4{ grid-template-columns:1fr; }
+    .card{ padding:13px; }
+    .kpi-row{ gap:8px; }
+    .kpi{ min-width:44%; flex:1 1 44%; }
+
+    input,select{ font-size:16px; padding:11px 10px; } /* evita zoom automático no iOS */
+    button.btn{ width:100%; padding:13px 18px; font-size:14px; }
+    .scan-btn{ padding:11px 14px; }
+    button.btn-sm{ padding:7px 11px; font-size:11.5px; }
+
+    table{ font-size:11.5px; min-width:540px; }
+    .modal-box{ width:94%; padding:14px; }
+    #scannerView{ min-height:200px; }
+
+    .result-box .grid.cols4{ grid-template-columns:1fr 1fr; gap:12px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="top">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <svg class="brand-logo" width="42" height="42" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="48" fill="#8B1A1A" stroke="#f0e6d8" stroke-width="3"/>
+        <path d="M27 68 V32 L50 52 L73 32 V68" fill="none" stroke="#f0e6d8" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+        <path d="M27 68 V32 L50 52 L73 32 V68" fill="none" stroke="#d9a441" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.9" transform="translate(2,2) scale(0.94) translate(3,3)"/>
+        <path d="M37 30 L41 20 L46 27 L50 17 L54 27 L59 20 L63 30 Z" fill="#d9a441" stroke="#8B1A1A" stroke-width="1"/>
+        <circle cx="44" cy="76" r="2" fill="#d9a441"/>
+        <circle cx="50" cy="78" r="2.4" fill="#d9a441"/>
+        <circle cx="56" cy="76" r="2" fill="#d9a441"/>
+      </svg>
+      <div>
+        <h1>Empório Magnata</h1>
+        <div class="sub">App de Gestão — Guanabara, Ananindeua/PA</div>
+      </div>
+    </div>
+    <div class="conn-status" id="connStatus" onclick="document.querySelector('[data-tab=config]').click()">
+      <span class="conn-dot off" id="connDot"></span>
+      <span id="connLabel">Configurar nuvem</span>
+    </div>
+  </div>
+</header>
+
+<nav>
+  <button class="tab-btn active" data-tab="inicio"><svg class="navico" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg> Início</button>
+  <button class="tab-btn" data-tab="caixa"><svg class="navico" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 15v-3M12 15V8M17 15v-6"/></svg> Caixa</button>
+  <button class="tab-btn" data-tab="estoque"><svg class="navico" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.7Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg> Estoque</button>
+  <button class="tab-btn" data-tab="produtos"><svg class="navico" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg> Produtos</button>
+  <button class="tab-btn" data-tab="precificacao"><svg class="navico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 8.5h3.5a1.8 1.8 0 0 1 0 3.6H10a1.9 1.9 0 0 0 0 3.8H15"/><path d="M12 6.5v2M12 15.5v2"/></svg> Preço</button>
+  <button class="tab-btn" data-tab="config"><svg class="navico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2-1.6-2-3.4-2.4 1a8 8 0 0 0-1.7-1L15 3h-4l-.3 2.4a8 8 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a8 8 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a8 8 0 0 0 1.7 1L11 21h4l.3-2.4a8 8 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg> Config</button>
+</nav>
+
+<main>
+
+  <!-- ===================== INÍCIO (DASHBOARD) ===================== -->
+  <div class="tab active" id="tab-inicio">
+    <div class="config-banner" id="configBanner" style="display:none;" onclick="document.querySelector('[data-tab=config]').click()">
+      ⚠️ Seus dados estão salvos só neste celular/computador. Se quiser, dá pra guardar uma cópia na nuvem em "Config" — mas isso é opcional, o app funciona normal sem isso.
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3>📋 Como usar o app, no dia a dia</h3>
+      <div style="font-size:12.5px; line-height:1.9; color:var(--cream);">
+        <b style="color:#e8b4a8;">Todo dia</b> → aba <b>Caixa</b>: lance quanto entrou e quanto saiu — dá pra já lançar a baixa de estoque no mesmo lugar.<br>
+        <b style="color:#e8b4a8;">Toda vez que chegar carne</b> → aba <b>Estoque</b>: registre o quanto entrou (dá pra escanear o código da nota).<br>
+        <b style="color:#e8b4a8;">Quando sobrar osso, apara ou perder peso</b> → aba <b>Estoque</b>, seção "Perdas": registre pra não sumir sem explicação.<br>
+        <b style="color:#e8b4a8;">Quando cadastrar um item novo</b> → aba <b>Produtos</b>: nome, custo e preço de venda (dá pra escanear o código de barras).<br>
+        <b style="color:#e8b4a8;">De vez em quando</b> → aba <b>Preço</b>: pra descobrir por quanto vender um corte novo — já vem com os cortes mais comuns do açougue na lista.<br>
+        <span style="color:var(--muted);">A aba <b>Início</b> (aqui) é só pra você ver o resumo — não precisa lançar nada aqui.</span>
+      </div>
+    </div>
+
+    <div class="config-banner" id="dash_vencimentoBanner" style="display:none; background:var(--amberBg); border-color:rgba(217,164,65,0.4); color:var(--amber); cursor:pointer;" onclick="document.querySelector('[data-tab=estoque]').click()">
+      <b>⏰ Tem lote de carne vencendo — toque pra ver na aba Estoque</b>
+    </div>
+
+    <h2>Resumo do dia</h2>
+    <div class="lead" id="todayLabel">—</div>
+
+    <div class="dash-grid">
+      <div class="dcard tall glow-green">
+        <div class="dtitle">Fluxo de Caixa — Mês</div>
+        <div class="dsub">Entrou × Saiu × Sobrou</div>
+        <div class="dbig" id="dash_sobrou">R$ 0</div>
+        <div class="dtag badge-green">sobrou no mês</div>
+        <div class="sparkline" id="dash_spark"></div>
+        <div style="margin-top:14px; font-size:11px; color:var(--muted);">
+          Entrou: <b id="dash_entrou" style="color:var(--cream);">R$0</b> · Saiu: <b id="dash_saiu" style="color:var(--cream);">R$0</b>
+        </div>
+      </div>
+      <div class="dcard glow-amber">
+        <div class="dtitle">Estoque</div>
+        <div class="dbig" id="dash_estoque">0 kg</div>
+        <div class="dtag" style="background:var(--amberBg); color:var(--amber);">saldo atual</div>
+      </div>
+      <div class="dcard glow-red">
+        <div class="dtitle">Meta do mês</div>
+        <div class="dsub">quanto falta pra cobrir as contas</div>
+        <div class="dbig" id="dash_breakeven">R$ 10.571</div>
+        <div class="dtag" style="background:rgba(192,57,43,0.15); color:#e08070;">falta vender</div>
+      </div>
+      <div class="dcard" style="grid-column:span 2;">
+        <div class="dtitle" style="margin-bottom:10px;">Ações rápidas</div>
+        <div class="qa-row">
+          <div class="qa" onclick="document.querySelector('[data-tab=caixa]').click()"><svg class="navico qaico" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 15v-3M12 15V8M17 15v-6"/></svg><div class="lab">Lançar caixa</div></div>
+          <div class="qa" onclick="document.querySelector('[data-tab=estoque]').click()"><svg class="navico qaico" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.7Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg><div class="lab">Estoque</div></div>
+          <div class="qa" onclick="document.querySelector('[data-tab=precificacao]').click()"><svg class="navico qaico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 8.5h3.5a1.8 1.8 0 0 1 0 3.6H10a1.9 1.9 0 0 0 0 3.8H15"/><path d="M12 6.5v2M12 15.5v2"/></svg><div class="lab">Precificar</div></div>
+          <div class="qa" onclick="document.querySelector('[data-tab=produtos]').click()"><svg class="navico qaico" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg><div class="lab">Produtos</div></div>
+        </div>
+      </div>
+      <div class="dcard">
+        <div class="dtitle">Produtos cadastrados</div>
+        <div class="dbig" id="dash_produtos">0</div>
+        <div class="dtag" style="background:var(--blueishBg); color:var(--blueish);">no catálogo</div>
+      </div>
+    </div>
+
+    <h3 style="font-size:13px; color:var(--muted); margin-top:22px;">Últimos lançamentos de caixa</h3>
+    <div class="table-wrap"><table id="dash_tabela_caixa">
+      <thead><tr><th>Data</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Sobrou</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="empty" id="dash_empty" style="display:none;">Nenhum lançamento ainda. Comece em "Caixa".</div>
+  </div>
+
+  <!-- ===================== PRECIFICAÇÃO ===================== -->
+  <div class="tab" id="tab-precificacao">
+    <h2>Calculadora de Preço — qualquer item</h2>
+    <div class="lead">Serve pra carne, bebida, artesanal, combo — qualquer coisa que você vende. Preencha os 4 quadros abaixo, na ordem — o app calcula o preço sozinho.</div>
+
+    <div class="formula" style="text-align:left; font-family:'Segoe UI',Arial,sans-serif;">
+      💡 Em palavras simples: o preço de venda precisa cobrir 4 coisas — (1) o que você pagou pelo item, (2) a fatia das contas fixas do mês, (3) os impostos e taxas que somem quando você vende, e (4) o lucro que você quer ganhar. Esqueceu algum desses 4? É aí que o dinheiro "some" sem você perceber.
+    </div>
+
+    <div class="grid cols4">
+      <div class="card">
+        <h3>1. Quanto custou o item</h3>
+        <label>Esse item perde peso da compra até a venda? (ex: carne com osso)</label>
+        <div style="display:flex; gap:14px; font-size:12.5px; margin:6px 0 10px 0;">
+          <label style="display:inline-flex; align-items:center; gap:5px; margin:0;"><input type="radio" name="p_tipo_custo" value="peso" checked onchange="toggleTipoCusto()" style="width:auto;"> Sim (carne)</label>
+          <label style="display:inline-flex; align-items:center; gap:5px; margin:0;"><input type="radio" name="p_tipo_custo" value="direto" onchange="toggleTipoCusto()" style="width:auto;"> Não (outros itens)</label>
+        </div>
+        <div id="custo_bloco_peso">
+          <label>Preço pago por kg, na nota (R$/kg)</label>
+          <input type="number" id="p_nota" step="0.01" value="18.00">
+          <label>% que sobrou ao pesar (nota vs. balança)</label>
+          <input type="number" id="p_receb" step="0.1" value="98">
+          <div class="footer-note">Ex: comprou 100kg na nota, pesou 98kg → coloque 98.</div>
+          <label>% que sobra depois de tirar o osso/gordura</label>
+          <input type="number" id="p_rend" step="0.1" value="87.9">
+          <div class="footer-note">Ex: de 100kg com osso, sobram 87,9kg limpos → coloque 87,9.</div>
+        </div>
+        <div id="custo_bloco_direto" style="display:none;">
+          <label>Quanto você paga por unidade (R$)</label>
+          <input type="number" id="p_custo_direto" step="0.01" value="0">
+          <div class="footer-note">Use pro que você compra pronto e não perde peso: bebida, embalagem, ingrediente de artesanal, etc.</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>2. Fatia das contas fixas</h3>
+        <label>Quanto você gasta de conta fixa por mês (R$)</label>
+        <input type="number" id="p_fixo" step="1" value="3700">
+        <div class="footer-note">Aluguel, luz, água, internet — tudo que você paga todo mês, vendendo muito ou pouco.</div>
+        <label>Quantas unidades você vende, em média, por mês (kg, garrafa, un — use a mesma medida do item)</label>
+        <input type="number" id="p_volume" step="1" value="372">
+        <div class="footer-note">O app divide as contas fixas por esse volume e soma no custo de cada unidade.</div>
+      </div>
+      <div class="card">
+        <h3>3. Impostos e taxas da venda</h3>
+        <div class="footer-note" style="margin-top:0;">Isso aqui é o que "some" do preço na hora de vender — diferente do custo, que é o que você já pagou antes.</div>
+        <label>Impostos (Simples Nacional, %)</label>
+        <input type="number" id="p_imposto" step="0.1" value="6">
+        <label>Taxa de cartão / maquininha (%)</label>
+        <input type="number" id="p_taxacartao" step="0.1" value="3">
+        <label>Outras comissões (ex: iFood, marketplace) (%)</label>
+        <input type="number" id="p_comissao" step="0.1" value="0">
+      </div>
+      <div class="card">
+        <h3>4. Quanto você quer lucrar</h3>
+        <label>Qual corte é esse? (só pra carne, opcional)</label>
+        <select id="p_corte" onchange="aplicarCorteEscolhido()">
+          <option value="">— Escolher da lista (opcional) —</option>
+        </select>
+        <div class="footer-note">Escolhendo um corte da lista, o app já preenche a categoria e o nome pra salvar, mais abaixo. Se não for carne ou o corte não estiver aqui, deixe assim e escolha a categoria manualmente.</div>
+        <label>Categoria do produto</label>
+        <select id="p_categoria" onchange="updateMarkupSuggestion()">
+          <option value="40-65" data-min="40" data-ideal="60">Cortes nobres (picanha, filé, alcatra)</option>
+          <option value="45-70" data-min="45" data-ideal="62">Cortes de segunda (paulista, lagarto)</option>
+          <option value="35-55" data-min="35" data-ideal="48">Bisteca / lombo / fradinha / miúdos</option>
+          <option value="50-80" data-min="50" data-ideal="65">Carne moída</option>
+          <option value="80-180" data-min="80" data-ideal="140">Artesanais (farofa, pimenta)</option>
+          <option value="20-40" data-min="20" data-ideal="30">Bebidas</option>
+          <option value="0-0" data-min="0" data-ideal="0">Outro (markup manual)</option>
+        </select>
+        <div class="footer-note">Ao escolher a categoria, o campo abaixo já vem preenchido com um lucro sugerido — mas você pode mudar.</div>
+        <label>Quanto de lucro em cima do custo (%)</label>
+        <input type="number" id="p_markup" step="1" value="60">
+      </div>
+    </div>
+
+    <button class="btn" onclick="calcularPrecificacao()">Calcular preço</button>
+
+    <div id="p_resultado" style="display:none;">
+      <div class="result-box">
+        <div class="grid cols4" style="gap:18px;">
+          <div><div class="label">Custo total (item + contas fixas)</div><div class="big" id="r_custototal">—</div></div>
+          <div><div class="label">Seu lucro</div><div class="big" id="r_lucro">—</div></div>
+          <div><div class="label">Impostos + taxas</div><div class="big" id="r_impostos">—</div></div>
+          <div><div class="label">Preço de venda sugerido</div><div class="big" id="r_preco" style="color:#ffb199;">—</div></div>
+        </div>
+      </div>
+      <div class="formula" style="text-align:left; margin-top:12px; margin-bottom:0;" id="r_explicacao"></div>
+      <div class="card" style="margin-top:12px;">
+        <h3>Salvar este cálculo como produto</h3>
+        <div class="grid cols3">
+          <div>
+            <label>Nome do produto/corte</label>
+            <input type="text" id="p_nome_save" placeholder="Ex: Alcatra">
+          </div>
+          <div>
+            <label>Quantidade de referência (mesma unidade do item) — deixe 1 para preço unitário</label>
+            <input type="number" id="p_peso_save" step="0.01" value="1">
+          </div>
+          <div style="display:flex; align-items:flex-end;">
+            <button class="btn" onclick="salvarComoProduto()">+ Adicionar aos produtos</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== PRODUTOS ===================== -->
+  <div class="tab" id="tab-produtos">
+    <h2>Cadastro de Produtos</h2>
+    <div class="lead">Lista de produtos com custo, preço de venda e margem calculada automaticamente.</div>
+
+    <div class="card">
+      <h3>🔎 Buscar / identificar por código de barras</h3>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="scan-btn" onclick="abrirScanner('buscar')">📷 Escanear para buscar produto</button>
+        <input type="text" id="busca_codigo_manual" placeholder="ou digite o código aqui" style="flex:1; min-width:160px;" onkeydown="if(event.key==='Enter')buscarPorCodigo(document.getElementById('busca_codigo_manual').value)">
+      </div>
+      <div id="busca_resultado"></div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h3>Novo produto</h3>
+      <div class="grid cols4">
+        <div><label>Nome</label><input type="text" id="prod_nome" list="lista_cortes" placeholder="Ex: Picanha — comece a digitar pra ver sugestões"></div>
+        <datalist id="lista_cortes"></datalist>
+        <div><label>Categoria</label>
+          <select id="prod_categoria">
+            <option>Cortes nobres</option><option>Cortes de segunda</option><option>Bisteca/Lombo</option>
+            <option>Carne moída</option><option>Miúdos</option><option>Artesanal</option><option>Bebida</option><option>Kit/Combo</option><option>Outro</option>
+          </select>
+        </div>
+        <div><label>Custo unitário (R$)</label><input type="number" id="prod_custo" step="0.01"></div>
+        <div><label>Preço de venda (R$)</label><input type="number" id="prod_preco" step="0.01"></div>
+      </div>
+      <label>Código de barras (opcional)</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="prod_codigo" placeholder="Escaneie ou digite o código">
+        <button class="scan-btn" onclick="abrirScanner('cadastrar')">📷</button>
+      </div>
+      <button class="btn" onclick="addProduto()">+ Adicionar produto</button>
+    </div>
+
+    <div class="table-wrap"><table id="tabela_produtos">
+      <thead><tr><th>Nome</th><th>Categoria</th><th>Código</th><th class="num">Custo</th><th class="num">Preço</th><th class="num">Margem</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="empty" id="produtos_empty" style="display:none;">Nenhum produto cadastrado ainda.</div>
+  </div>
+
+  <!-- ===================== MODAL SCANNER ===================== -->
+  <div class="modal-overlay" id="scannerModal">
+    <div class="modal-box">
+      <h3>📷 Escanear código de barras <span class="closeX" onclick="fecharScanner()">✕</span></h3>
+      <div id="scannerView"></div>
+      <div class="scan-hint">Aponte a câmera para o código de barras do produto. Funciona melhor com boa luz.</div>
+      <div id="scan_status" class="scan-result" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- ===================== FLUXO DE CAIXA ===================== -->
+  <div class="tab" id="tab-caixa">
+    <h2>Fluxo de Caixa Diário</h2>
+    <div class="lead">Os 3 números do dia: quanto entrou, quanto saiu, quanto sobrou.</div>
+
+    <div class="card">
+      <h3>Lançamento do dia</h3>
+      <label>Data</label>
+      <input type="date" id="cx_data">
+      <div class="grid cols2" style="margin-top:10px;">
+        <div>
+          <strong style="font-size:12px;color:var(--green);">ENTRADAS</strong>
+          <label>Dinheiro</label><input type="number" id="cx_din" step="0.01" value="0">
+          <label>Pix</label><input type="number" id="cx_pix" step="0.01" value="0">
+          <label>Cartão débito</label><input type="number" id="cx_deb" step="0.01" value="0">
+          <label>Cartão crédito</label><input type="number" id="cx_cred" step="0.01" value="0">
+          <label>Fiado quitado</label><input type="number" id="cx_fiado" step="0.01" value="0">
+        </div>
+        <div>
+          <strong style="font-size:12px;color:#e08070;">SAÍDAS</strong>
+          <label>Fornecedor (carne)</label><input type="number" id="cx_forn" step="0.01" value="0">
+          <label>Insumos / embalagem</label><input type="number" id="cx_insumo" step="0.01" value="0">
+          <label>Contas (energia, aluguel...)</label><input type="number" id="cx_conta" step="0.01" value="0">
+          <label>Retirada pessoal (diária da família)</label><input type="number" id="cx_retirada" step="0.01" value="0">
+          <label>Outros</label><input type="number" id="cx_outros" step="0.01" value="0">
+        </div>
+      </div>
+      <label>Observação</label>
+      <input type="text" id="cx_obs" placeholder="Ex: entrada de carne, 93kg">
+
+      <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--cardBorder);">
+        <strong style="font-size:12px; color:var(--amber);">🥩 BAIXA DE ESTOQUE (opcional)</strong>
+        <div class="footer-note" style="margin-bottom:6px;">Se você já registra a saída de carne na aba Estoque, não precisa preencher aqui — é só um atalho pra fazer os dois de uma vez.</div>
+        <label>Kg de carne vendido hoje</label>
+        <input type="number" id="cx_kg_vendido" step="0.01" value="0">
+      </div>
+
+      <button class="btn" onclick="addCaixa()">+ Lançar dia</button>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi"><div class="v" id="kpi_entrou">R$ 0</div><div class="l">Entrou no mês</div></div>
+      <div class="kpi"><div class="v" id="kpi_saiu">R$ 0</div><div class="l">Saiu no mês</div></div>
+      <div class="kpi"><div class="v" id="kpi_sobrou">R$ 0</div><div class="l">Sobrou no mês</div></div>
+      <div class="kpi"><div class="v" id="kpi_breakeven">R$ 10.571</div><div class="l">Falta p/ cobrir as contas</div></div>
+    </div>
+
+    <div class="table-wrap"><table id="tabela_caixa">
+      <thead><tr><th>Data</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Sobrou</th><th>Obs.</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="empty" id="caixa_empty" style="display:none;">Nenhum lançamento ainda. Comece registrando o dia de hoje.</div>
+  </div>
+
+  <!-- ===================== ESTOQUE ===================== -->
+  <div class="tab" id="tab-estoque">
+    <h2>Controle de Estoque de Carne</h2>
+    <div class="lead">Registre cada entrada de carne (nota × balança), as saídas (vendas) e as perdas (osso, apara, quebra) para acompanhar rendimento e saldo real. Dá pra escanear o QR/código de barras da nota na hora de receber a carne.</div>
+
+    <div class="grid cols3">
+      <div class="card">
+        <h3>Entrada de carne</h3>
+        <label>Nº da nota / código (opcional)</label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="es_codigo" placeholder="Escaneie o QR/código da nota ou digite">
+          <button class="scan-btn" onclick="abrirScanner('estoque_entrada')">📷</button>
+        </div>
+        <div class="footer-note" id="es_scan_hint">Escanear é opcional — serve pra guardar de qual entrega é essa entrada. O peso da nota e da balança você sempre confere e digita abaixo.</div>
+        <label>Data</label><input type="date" id="es_data_in">
+        <label>Kg comprado (nota)</label><input type="number" id="es_nota" step="0.01">
+        <label>Kg na balança (real)</label><input type="number" id="es_balanca" step="0.01">
+        <label>Kg limpo após desossa (opcional)</label><input type="number" id="es_limpo" step="0.01">
+        <label>Validade do lote (opcional)</label><input type="date" id="es_validade">
+        <div class="footer-note">Se preencher, o app te avisa aqui e no Início quando esse lote estiver perto de vencer.</div>
+        <button class="btn" onclick="addEstoqueEntrada()">+ Registrar entrada</button>
+      </div>
+      <div class="card">
+        <h3>Saída (venda)</h3>
+        <label>Data</label><input type="date" id="es_data_out">
+        <label>Kg vendido</label><input type="number" id="es_vendido" step="0.01">
+        <label>Observação</label><input type="text" id="es_obs_out" placeholder="Ex: balcão + B2B">
+        <button class="btn" onclick="addEstoqueSaida()">+ Registrar saída</button>
+      </div>
+      <div class="card">
+        <h3>🦴 Perdas (osso, apara, quebra)</h3>
+        <div class="footer-note" style="margin-top:0;">Registre aqui o que sai do estoque mas não foi vendido — osso, apara, quebra de peso ou descarte. Assim a margem real não fica escondida.</div>
+        <label>Data</label><input type="date" id="es_data_perda">
+        <label>Kg perdido</label><input type="number" id="es_perda_kg" step="0.01">
+        <label>Motivo</label>
+        <select id="es_perda_motivo">
+          <option>Osso / apara na desossa</option>
+          <option>Quebra de peso (perda natural)</option>
+          <option>Vencido / descarte</option>
+          <option>Outro</option>
+        </select>
+        <button class="btn" onclick="addEstoquePerda()">+ Registrar perda</button>
+      </div>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi"><div class="v" id="kpi_estoque_saldo">0 kg</div><div class="l">Saldo em estoque</div></div>
+      <div class="kpi"><div class="v" id="kpi_rendimento_medio">—</div><div class="l">Rendimento médio</div></div>
+      <div class="kpi"><div class="v" id="kpi_receb_medio">—</div><div class="l">Recebimento médio</div></div>
+      <div class="kpi"><div class="v" id="kpi_perdas_mes">0 kg</div><div class="l">Perdas no mês</div></div>
+    </div>
+
+    <div class="config-banner" id="vencimentoBanner" style="display:none; background:var(--amberBg); border-color:rgba(217,164,65,0.4); color:var(--amber); cursor:default;">
+      <b>⏰ Fica de olho — vencimento</b>
+      <div id="vencimentoLista" style="margin-top:6px; font-size:11.5px; color:var(--cream);"></div>
+    </div>
+
+    <h3 style="font-size:13px;margin-top:18px;">Histórico de movimentação</h3>
+    <div class="table-wrap"><table id="tabela_estoque">
+      <thead><tr><th>Data</th><th>Tipo</th><th class="num">Kg</th><th>Detalhe</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="empty" id="estoque_empty" style="display:none;">Nenhuma movimentação registrada ainda.</div>
+  </div>
+
+  <!-- ===================== CONFIGURAÇÕES ===================== -->
+  <div class="tab" id="tab-config">
+    <h2>Configurações</h2>
+    <div class="lead">Essa aba é opcional e mais técnica. Se estiver tudo funcionando bem no dia a dia, não precisa mexer aqui.</div>
+
+    <div class="card">
+      <h3>☁️ Guardar cópia na nuvem (avançado, opcional)</h3>
+      <p style="font-size:12px; color:var(--muted); line-height:1.6;">
+        Sem isso, o app já funciona normal e salva tudo neste aparelho. Só configure aqui se quiser acessar os mesmos dados de mais de um celular/computador, ou se peça pra alguém da equipe técnica ajudar a configurar.<br><br>
+        1. Crie uma conta grátis em <a href="https://supabase.com" target="_blank" style="color:#ffb199;">supabase.com</a> (login com Google, sem cartão)<br>
+        2. Crie um novo projeto (qualquer nome, ex: "emporio-magna")<br>
+        3. No menu lateral vá em <b>SQL Editor</b> → cole o código abaixo → Run<br>
+        4. Vá em <b>Project Settings → API</b> → copie a <b>Project URL</b> e a chave <b>anon public</b><br>
+        5. Cole os dois campos abaixo e clique em Conectar
+      </p>
+      <button class="btn secondary" onclick="copiarSQL()" style="margin-bottom:10px;">📋 Copiar código SQL das tabelas</button>
+      <div class="footer-note" style="margin-bottom:10px;">Já tinha conectado a nuvem antes de julho/2026? Rode isso também no SQL Editor, uma vez só: <code style="color:#e8b4a8;">alter table caixa add column estoque_ref_id text; alter table estoque add column codigo text; alter table estoque add column validade date;</code></div>
+      <label>Project URL</label>
+      <input type="text" id="sb_url" placeholder="https://xxxxxxxx.supabase.co">
+      <label>Anon public key</label>
+      <input type="text" id="sb_key" placeholder="eyJhbGciOi...">
+      <button class="btn" onclick="conectarSupabase()">🔌 Conectar</button>
+      <button class="btn secondary" onclick="desconectarSupabase()" style="margin-left:8px;">Desconectar</button>
+      <div id="sb_status" style="margin-top:10px; font-size:12px;"></div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h3>💾 Backup local (.json)</h3>
+      <p style="font-size:12px;">Funciona com ou sem nuvem conectada — guarde uma cópia de segurança de vez em quando.</p>
+      <button class="btn" onclick="exportData()">⬇ Exportar backup</button>
+      <label style="margin-top:16px;">Importar backup</label>
+      <input type="file" id="importFile" accept=".json" onchange="importData(event)">
+    </div>
+
+    <div class="card" style="margin-top:14px; border-color:#6b1f1f;">
+      <h3 style="color:#e08070;">Zona de risco</h3>
+      <button class="btn" style="background:transparent;color:#e08070;border:1px solid #6b1f1f;" onclick="limparTudo()">🗑 Apagar todos os dados locais</button>
+    </div>
+  </div>
+
+</main>
+
+<div class="save-indicator" id="saveIndicator">✓ Salvo</div>
+
+<script>
+// ===================== SUPABASE CONFIG =====================
+let supabaseClient = null;
+let cloudConnected = false;
+const SQL_SCHEMA = `create table produtos (
+  id text primary key,
+  nome text, categoria text, custo numeric, preco numeric, codigo_barras text,
+  created_at timestamp default now()
+);
+create table caixa (
+  id text primary key,
+  data date, entrou numeric, saiu numeric, sobrou numeric, obs text, estoque_ref_id text,
+  created_at timestamp default now()
+);
+create table estoque (
+  id text primary key,
+  data date, tipo text, kg numeric, nota numeric, balanca numeric,
+  limpo numeric, receb_pct numeric, obs text, codigo text, validade date,
+  created_at timestamp default now()
+);
+alter table produtos enable row level security;
+alter table caixa enable row level security;
+alter table estoque enable row level security;
+create policy "allow all produtos" on produtos for all using (true) with check (true);
+create policy "allow all caixa" on caixa for all using (true) with check (true);
+create policy "allow all estoque" on estoque for all using (true) with check (true);`;
+
+function copiarSQL(){
+  navigator.clipboard.writeText(SQL_SCHEMA);
+  alert("Código SQL copiado! Cole no SQL Editor do Supabase e clique em Run.");
+}
+
+async function conectarSupabase(){
+  const url = document.getElementById("sb_url").value.trim();
+  const key = document.getElementById("sb_key").value.trim();
+  if(!url || !key){ alert("Preencha a URL e a chave."); return; }
+  try{
+    supabaseClient = supabase.createClient(url, key);
+    const { error } = await supabaseClient.from("produtos").select("id").limit(1);
+    if(error) throw error;
+    localStorage.setItem("em_sb_url", url);
+    localStorage.setItem("em_sb_key", key);
+    cloudConnected = true;
+    updateConnStatus();
+    document.getElementById("sb_status").innerHTML = '<span style="color:#3fae5a;">✓ Conectado! Sincronizando dados...</span>';
+    await syncFromCloud();
+  }catch(e){
+    document.getElementById("sb_status").innerHTML = '<span style="color:#e08070;">Erro: '+e.message+' — confira se rodou o SQL e copiou a chave certa (anon public).</span>';
+  }
+}
+function desconectarSupabase(){
+  localStorage.removeItem("em_sb_url");
+  localStorage.removeItem("em_sb_key");
+  supabaseClient = null;
+  cloudConnected = false;
+  updateConnStatus();
+  document.getElementById("sb_status").innerHTML = "Desconectado. Dados continuam salvos localmente.";
+}
+function updateConnStatus(){
+  const dot = document.getElementById("connDot");
+  const label = document.getElementById("connLabel");
+  const banner = document.getElementById("configBanner");
+  if(cloudConnected){
+    dot.className = "conn-dot on"; label.textContent = "Nuvem conectada"; banner.style.display = "none";
+  } else {
+    dot.className = "conn-dot off"; label.textContent = "Configurar nuvem"; banner.style.display = "block";
+  }
+}
+async function syncFromCloud(){
+  if(!cloudConnected) return;
+  try{
+    const [{data:prod}, {data:cx}, {data:es}] = await Promise.all([
+      supabaseClient.from("produtos").select("*").order("created_at",{ascending:false}),
+      supabaseClient.from("caixa").select("*").order("data",{ascending:false}),
+      supabaseClient.from("estoque").select("*").order("data",{ascending:false}),
+    ]);
+    db.produtos = (prod||[]).map(p=>({id:p.id, nome:p.nome, categoria:p.categoria, custo:p.custo, preco:p.preco, codigoBarras:p.codigo_barras}));
+    db.caixa = (cx||[]).map(c=>({id:c.id, data:c.data, entrou:c.entrou, saiu:c.saiu, sobrou:c.sobrou, obs:c.obs, estoqueRefId:c.estoque_ref_id}));
+    db.estoque = (es||[]).map(e=>({id:e.id, data:e.data, tipo:e.tipo, kg:e.kg, nota:e.nota, balanca:e.balanca, limpo:e.limpo, recebPct:e.receb_pct, obs:e.obs, codigo:e.codigo, validade:e.validade}));
+    saveDB(true);
+    renderProdutos(); renderCaixa(); renderEstoque(); renderDashboard();
+  }catch(e){ console.error("Erro ao sincronizar:", e); }
+}
+
+// ===================== STORAGE =====================
+const DB_KEY = "emporio_magnata_db_v1";
+function loadDB(){
+  const raw = localStorage.getItem(DB_KEY);
+  if(raw){ try { return JSON.parse(raw); } catch(e){} }
+  return { produtos: [], caixa: [], estoque: [] };
+}
+let db = loadDB();
+function saveDB(skipIndicator){
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
+  if(!skipIndicator){
+    const ind = document.getElementById("saveIndicator");
+    ind.classList.add("show");
+    setTimeout(()=>ind.classList.remove("show"), 1200);
+  }
+}
+function fmtR(v){ return "R$ " + (Number(v)||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtKg(v){ return (Number(v)||0).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1}) + " kg"; }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+// ===================== NAV =====================
+document.querySelectorAll(".tab-btn").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-"+btn.dataset.tab).classList.add("active");
+    if(btn.dataset.tab==="inicio") renderDashboard();
+  });
+});
+
+// ===================== DASHBOARD =====================
+function renderDashboard(){
+  const now = new Date();
+  document.getElementById("todayLabel").textContent = now.toLocaleDateString("pt-BR",{weekday:'long', day:'numeric', month:'long'});
+  const ymPrefix = now.toISOString().slice(0,7);
+  let entrouMes=0, saiuMes=0;
+  const last7 = [];
+  db.caixa.forEach(c=>{ if(c.data && c.data.startsWith(ymPrefix)){ entrouMes+=Number(c.entrou)||0; saiuMes+=Number(c.saiu)||0; } });
+  document.getElementById("dash_entrou").textContent = fmtR(entrouMes);
+  document.getElementById("dash_saiu").textContent = fmtR(saiuMes);
+  document.getElementById("dash_sobrou").textContent = fmtR(entrouMes-saiuMes);
+  const breakeven = 10571;
+  document.getElementById("dash_breakeven").textContent = fmtR(Math.max(0,breakeven-entrouMes));
+
+  let saldo=0;
+  db.estoque.forEach(e=>{ if(e.tipo==="entrada"){ saldo += Number(e.limpo||e.kg)||0; } else { saldo -= Number(e.kg)||0; } });
+  document.getElementById("dash_estoque").textContent = fmtKg(saldo);
+  document.getElementById("dash_produtos").textContent = db.produtos.length;
+
+  const temVencendo = db.estoque.some(e=>e.tipo==="entrada" && e.validade && diasAte(e.validade)<=3);
+  document.getElementById("dash_vencimentoBanner").style.display = temVencendo ? "block" : "none";
+
+  const spark = document.getElementById("dash_spark");
+  spark.innerHTML = "";
+  const sorted = [...db.caixa].sort((a,b)=> a.data < b.data ? -1 : 1).slice(-7);
+  const max = Math.max(1, ...sorted.map(c=>c.sobrou||0));
+  if(sorted.length===0){ for(let i=0;i<7;i++){ const s=document.createElement("span"); s.style.height="8%"; spark.appendChild(s);} }
+  sorted.forEach(c=>{
+    const s = document.createElement("span");
+    const h = Math.max(6, (Math.max(0,c.sobrou)/max)*100);
+    s.style.height = h+"%";
+    spark.appendChild(s);
+  });
+
+  const tbody = document.querySelector("#dash_tabela_caixa tbody");
+  tbody.innerHTML = "";
+  const recent = [...db.caixa].sort((a,b)=> a.data < b.data ? 1 : -1).slice(0,5);
+  document.getElementById("dash_empty").style.display = recent.length ? "none" : "block";
+  recent.forEach(c=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${formatDateBR(c.data)}</td><td class="num">${fmtR(c.entrou)}</td><td class="num">${fmtR(c.saiu)}</td>
+      <td class="num"><b style="color:${c.sobrou>=0?'#3fae5a':'#e08070'}">${fmtR(c.sobrou)}</b></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ===================== CATÁLOGO DE CORTES =====================
+const CORTES_ACOUGUE = [
+  {corte:"Picanha", tier:"40-65"}, {corte:"Alcatra", tier:"40-65"}, {corte:"Filé Mignon", tier:"40-65"},
+  {corte:"Contra-filé (Bife de Chorizo)", tier:"40-65"}, {corte:"Maminha", tier:"40-65"},
+  {corte:"Fraldinha", tier:"40-65"}, {corte:"Cupim", tier:"40-65"},
+  {corte:"Coxão Mole", tier:"45-70"}, {corte:"Coxão Duro", tier:"45-70"}, {corte:"Patinho", tier:"45-70"},
+  {corte:"Lagarto", tier:"45-70"}, {corte:"Paleta", tier:"45-70"}, {corte:"Acém", tier:"45-70"},
+  {corte:"Peito", tier:"45-70"}, {corte:"Miolo da Paleta", tier:"45-70"},
+  {corte:"Bisteca", tier:"35-55"}, {corte:"Lombo", tier:"35-55"}, {corte:"Costela", tier:"35-55"},
+  {corte:"Músculo", tier:"35-55"}, {corte:"Ossobuco", tier:"35-55"}, {corte:"Rabo", tier:"35-55"},
+  {corte:"Matambre", tier:"35-55"}, {corte:"Capa de Filé", tier:"35-55"}, {corte:"Aba de Filé", tier:"35-55"},
+  {corte:"Peixinho", tier:"35-55"}, {corte:"Fígado", tier:"35-55"}, {corte:"Coração", tier:"35-55"},
+  {corte:"Língua", tier:"35-55"}, {corte:"Bucho", tier:"35-55"},
+  {corte:"Carne Moída (Patinho)", tier:"50-80"}, {corte:"Carne Moída (Acém)", tier:"50-80"},
+];
+const TIER_LABEL = { "40-65":"Cortes nobres", "45-70":"Cortes de segunda", "35-55":"Bisteca / lombo / miúdos", "50-80":"Carne moída" };
+function popularCortes(){
+  const sel = document.getElementById("p_corte");
+  const grupos = {};
+  CORTES_ACOUGUE.forEach(c=>{ (grupos[c.tier] = grupos[c.tier]||[]).push(c.corte); });
+  Object.keys(grupos).forEach(tier=>{
+    const og = document.createElement("optgroup");
+    og.label = TIER_LABEL[tier] || tier;
+    grupos[tier].forEach(nome=>{
+      const opt = document.createElement("option");
+      opt.value = nome; opt.textContent = nome; opt.dataset.tier = tier;
+      og.appendChild(opt);
+    });
+    sel.appendChild(og);
+  });
+  const datalist = document.getElementById("lista_cortes");
+  CORTES_ACOUGUE.forEach(c=>{
+    const opt = document.createElement("option");
+    opt.value = c.corte;
+    datalist.appendChild(opt);
+  });
+}
+function aplicarCorteEscolhido(){
+  const sel = document.getElementById("p_corte");
+  const tier = sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.tier : null;
+  if(!tier) return;
+  document.getElementById("p_categoria").value = tier;
+  updateMarkupSuggestion();
+  document.getElementById("p_nome_save").value = sel.value;
+}
+
+// ===================== PRECIFICAÇÃO =====================
+function updateMarkupSuggestion(){
+  const sel = document.getElementById("p_categoria");
+  const opt = sel.options[sel.selectedIndex];
+  document.getElementById("p_markup").value = opt.dataset.ideal;
+}
+function toggleTipoCusto(){
+  const tipo = document.querySelector('input[name="p_tipo_custo"]:checked').value;
+  document.getElementById("custo_bloco_peso").style.display = tipo==="peso" ? "block" : "none";
+  document.getElementById("custo_bloco_direto").style.display = tipo==="direto" ? "block" : "none";
+}
+// Fórmula baseada no método de markup do SEBRAE (custo ÷ [1 - despesas variáveis%]),
+// aplicado sobre o custo já com a margem de lucro somada — assim o imposto/taxa de
+// cartão (que incide sobre o preço de venda, não sobre o custo) não fica escondido.
+let ultimoCalculo = null;
+function calcularPrecificacao(){
+  const tipoCusto = document.querySelector('input[name="p_tipo_custo"]:checked').value;
+  let custoVariavel;
+  if(tipoCusto === "peso"){
+    const nota = parseFloat(document.getElementById("p_nota").value)||0;
+    const receb = parseFloat(document.getElementById("p_receb").value)||100;
+    const rend = parseFloat(document.getElementById("p_rend").value)||100;
+    custoVariavel = nota / (receb/100) / (rend/100);
+  } else {
+    custoVariavel = parseFloat(document.getElementById("p_custo_direto").value)||0;
+  }
+  const fixo = parseFloat(document.getElementById("p_fixo").value)||0;
+  const volume = parseFloat(document.getElementById("p_volume").value)||1;
+  const markup = parseFloat(document.getElementById("p_markup").value)||0;
+  const imposto = parseFloat(document.getElementById("p_imposto").value)||0;
+  const taxaCartao = parseFloat(document.getElementById("p_taxacartao").value)||0;
+  const comissao = parseFloat(document.getElementById("p_comissao").value)||0;
+  const despVarPct = imposto + taxaCartao + comissao;
+
+  const custoFixoUnit = fixo / volume;
+  const custoTotal = custoVariavel + custoFixoUnit;
+  const precoBase = custoTotal * (1 + markup/100);
+  const divisor = 1 - despVarPct/100;
+
+  if(divisor <= 0){
+    alert("Impostos + taxas somam 100% ou mais — essa conta não fecha. Reduza os percentuais do quadro 3.");
+    return;
+  }
+  const precoVenda = precoBase / divisor;
+  const valorImpostosTaxas = precoVenda - precoBase;
+  const valorLucro = precoBase - custoTotal;
+
+  document.getElementById("r_custototal").textContent = fmtR(custoTotal);
+  document.getElementById("r_lucro").textContent = fmtR(valorLucro);
+  document.getElementById("r_impostos").textContent = fmtR(valorImpostosTaxas);
+  document.getElementById("r_preco").textContent = fmtR(precoVenda);
+  document.getElementById("p_resultado").style.display = "block";
+  document.getElementById("r_explicacao").innerHTML =
+    `<b>Como o app chegou nesse preço:</b><br>` +
+    (tipoCusto==="peso"
+      ? `1. Custo do item: ${fmtR(parseFloat(document.getElementById("p_nota").value)||0)} (nota) ÷ ${document.getElementById("p_receb").value}% (peso) ÷ ${document.getElementById("p_rend").value}% (rendimento) = <b>${fmtR(custoVariavel)}</b><br>`
+      : `1. Custo do item: <b>${fmtR(custoVariavel)}</b> (o que você paga por unidade)<br>`) +
+    `2. + Fatia das contas fixas: ${fmtR(fixo)} ÷ ${volume} = <b>${fmtR(custoFixoUnit)}</b> → custo total <b>${fmtR(custoTotal)}</b><br>` +
+    `3. + Seu lucro desejado: ${fmtR(custoTotal)} × ${markup}% = <b>${fmtR(precoBase)}</b> (custo + lucro, antes de impostos/taxas)<br>` +
+    `4. Como ${despVarPct.toFixed(1)}% do preço final some em impostos e taxas, dividimos: ${fmtR(precoBase)} ÷ (1 − ${despVarPct.toFixed(1)}%) = <b style="color:#ffb199;">${fmtR(precoVenda)}</b><br>` +
+    `<span style="color:var(--muted);">Ou seja: de cada ${fmtR(precoVenda)} cobrado, ${fmtR(custoTotal)} é custo, ${fmtR(valorLucro)} fica de lucro, e ${fmtR(valorImpostosTaxas)} vai embora em impostos/taxas.</span>`;
+
+  ultimoCalculo = { custoTotal, precoVenda };
+}
+async function salvarComoProduto(){
+  if(!ultimoCalculo){ alert("Calcule o preço primeiro."); return; }
+  const nome = document.getElementById("p_nome_save").value.trim();
+  const peso = parseFloat(document.getElementById("p_peso_save").value)||1;
+  if(!nome){ alert("Digite o nome do produto."); return; }
+  const categoria = document.getElementById("p_categoria").selectedOptions[0].textContent;
+  const novo = { id: uid(), nome, categoria, custo: +(ultimoCalculo.custoTotal*peso).toFixed(2), preco: +(ultimoCalculo.precoVenda*peso).toFixed(2) };
+  db.produtos.push(novo);
+  saveDB(); renderProdutos();
+  if(cloudConnected){ await supabaseClient.from("produtos").insert(novo); }
+  document.getElementById("p_nome_save").value = "";
+  document.querySelector('[data-tab="produtos"]').click();
+}
+
+// ===================== PRODUTOS =====================
+async function addProduto(){
+  const nome = document.getElementById("prod_nome").value.trim();
+  const categoria = document.getElementById("prod_categoria").value;
+  const custo = parseFloat(document.getElementById("prod_custo").value)||0;
+  const preco = parseFloat(document.getElementById("prod_preco").value)||0;
+  const codigoBarras = document.getElementById("prod_codigo").value.trim();
+  if(!nome){ alert("Digite o nome do produto."); return; }
+  const novo = { id: uid(), nome, categoria, custo, preco, codigoBarras };
+  db.produtos.push(novo);
+  saveDB();
+  if(cloudConnected){ await supabaseClient.from("produtos").insert({...novo, codigo_barras: novo.codigoBarras}); }
+  document.getElementById("prod_nome").value = "";
+  document.getElementById("prod_custo").value = "";
+  document.getElementById("prod_preco").value = "";
+  document.getElementById("prod_codigo").value = "";
+  renderProdutos();
+}
+async function delProduto(id){
+  db.produtos = db.produtos.filter(p=>p.id!==id);
+  saveDB(); renderProdutos();
+  if(cloudConnected){ await supabaseClient.from("produtos").delete().eq("id", id); }
+}
+function renderProdutos(){
+  const tbody = document.querySelector("#tabela_produtos tbody");
+  tbody.innerHTML = "";
+  document.getElementById("produtos_empty").style.display = db.produtos.length ? "none" : "block";
+  db.produtos.forEach(p=>{
+    const margem = p.preco>0 ? ((p.preco-p.custo)/p.preco*100) : 0;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${p.nome}</td><td>${p.categoria}</td><td style="font-family:Consolas,monospace; font-size:11px; color:var(--muted);">${p.codigoBarras||"—"}</td><td class="num">${fmtR(p.custo)}</td>
+      <td class="num">${fmtR(p.preco)}</td>
+      <td class="num"><span class="badge ${margem>=40?'badge-green':'badge-red'}">${margem.toFixed(0)}%</span></td>
+      <td><button class="btn-sm delbtn" onclick="delProduto('${p.id}')">Excluir</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ===================== SCANNER DE CÓDIGO DE BARRAS =====================
+let html5QrCode = null;
+let scannerMode = "buscar"; // "buscar", "cadastrar" ou "estoque_entrada"
+function abrirScanner(mode){
+  scannerMode = mode;
+  document.getElementById("scannerModal").classList.add("show");
+  document.getElementById("scan_status").style.display = "none";
+  html5QrCode = new Html5Qrcode("scannerView");
+  const config = { fps: 10, qrbox: { width: 250, height: 120 }, formatsToSupport: [
+    Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+    Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+    Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.QR_CODE
+  ]};
+  html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+    .catch(err=>{
+      document.getElementById("scan_status").style.display = "block";
+      document.getElementById("scan_status").innerHTML = '<span style="color:#e08070;">Não consegui acessar a câmera. Verifique a permissão do navegador, ou digite o código manualmente.</span>';
+    });
+}
+function fecharScanner(){
+  document.getElementById("scannerModal").classList.remove("show");
+  if(html5QrCode){ html5QrCode.stop().then(()=>html5QrCode.clear()).catch(()=>{}); html5QrCode = null; }
+}
+function onScanSuccess(decodedText){
+  if(html5QrCode){ html5QrCode.pause(true); }
+  const status = document.getElementById("scan_status");
+  status.style.display = "block";
+  status.innerHTML = `✓ Código lido: <b>${decodedText}</b>`;
+  setTimeout(()=>{
+    fecharScanner();
+    if(scannerMode === "cadastrar"){
+      document.getElementById("prod_codigo").value = decodedText;
+    } else if(scannerMode === "estoque_entrada"){
+      document.getElementById("es_codigo").value = decodedText;
+      const hint = document.getElementById("es_scan_hint");
+      const numero = parseFloat(decodedText.trim().replace(",", "."));
+      const pareceNumero = /^[0-9]+([.,][0-9]+)?$/.test(decodedText.trim());
+      if(pareceNumero && !isNaN(numero)){
+        document.getElementById("es_nota").value = numero;
+        hint.style.color = "var(--green)";
+        hint.textContent = "✓ Peso lido do código: " + numero + " kg — já preenchi o campo 'Kg comprado (nota)', confira antes de registrar.";
+      } else {
+        hint.style.color = "";
+        hint.textContent = "✓ Código da nota guardado. Agora digite o peso da nota e da balança abaixo.";
+      }
+    } else {
+      buscarPorCodigo(decodedText);
+    }
+  }, 700);
+}
+function buscarPorCodigo(codigo){
+  codigo = (codigo||"").trim();
+  const resultDiv = document.getElementById("busca_resultado");
+  if(!codigo){ resultDiv.innerHTML = ""; return; }
+  const achado = db.produtos.find(p => p.codigoBarras && p.codigoBarras === codigo);
+  if(achado){
+    const margem = achado.preco>0 ? ((achado.preco-achado.custo)/achado.preco*100) : 0;
+    resultDiv.innerHTML = `<div class="scan-result">
+      <b>${achado.nome}</b> · ${achado.categoria}<br>
+      Custo: ${fmtR(achado.custo)} · Preço: <b>${fmtR(achado.preco)}</b> · Margem: ${margem.toFixed(0)}%
+    </div>`;
+  } else {
+    resultDiv.innerHTML = `<div class="scan-result" style="background:var(--amberBg); border-color:rgba(217,164,65,0.4); color:var(--amber);">
+      Código <b>${codigo}</b> não encontrado. Preencha o formulário abaixo para cadastrar este produto.
+    </div>`;
+    document.getElementById("prod_codigo").value = codigo;
+  }
+}
+
+// ===================== CAIXA =====================
+async function addCaixa(){
+  const data = document.getElementById("cx_data").value || new Date().toISOString().slice(0,10);
+  const entrou = ["cx_din","cx_pix","cx_deb","cx_cred","cx_fiado"].reduce((s,id)=>s+(parseFloat(document.getElementById(id).value)||0),0);
+  const saiu = ["cx_forn","cx_insumo","cx_conta","cx_retirada","cx_outros"].reduce((s,id)=>s+(parseFloat(document.getElementById(id).value)||0),0);
+  const obs = document.getElementById("cx_obs").value;
+  const kgVendido = parseFloat(document.getElementById("cx_kg_vendido").value)||0;
+  const novo = { id: uid(), data, entrou, saiu, sobrou: entrou-saiu, obs };
+
+  let estoqueRef = null;
+  if(kgVendido > 0){
+    estoqueRef = { id: uid(), data, tipo: "saida", kg: kgVendido, obs: "Baixa automática do lançamento de caixa" };
+    novo.estoqueRefId = estoqueRef.id;
+  }
+
+  db.caixa.push(novo);
+  db.caixa.sort((a,b)=> a.data < b.data ? 1 : -1);
+  if(estoqueRef){ db.estoque.push(estoqueRef); db.estoque.sort((a,b)=> a.data < b.data ? 1 : -1); }
+  saveDB();
+  if(cloudConnected){
+    await supabaseClient.from("caixa").insert({ id: novo.id, data: novo.data, entrou: novo.entrou, saiu: novo.saiu, sobrou: novo.sobrou, obs: novo.obs, estoque_ref_id: novo.estoqueRefId||null });
+    if(estoqueRef){ await supabaseClient.from("estoque").insert(estoqueRef); }
+  }
+  ["cx_din","cx_pix","cx_deb","cx_cred","cx_fiado","cx_forn","cx_insumo","cx_conta","cx_retirada","cx_outros","cx_kg_vendido"].forEach(id=>document.getElementById(id).value="0");
+  document.getElementById("cx_obs").value = "";
+  renderCaixa(); renderEstoque();
+}
+async function delCaixa(id){
+  const rec = db.caixa.find(c=>c.id===id);
+  db.caixa = db.caixa.filter(c=>c.id!==id);
+  if(rec && rec.estoqueRefId){ db.estoque = db.estoque.filter(e=>e.id!==rec.estoqueRefId); }
+  saveDB(); renderCaixa(); renderEstoque();
+  if(cloudConnected){
+    await supabaseClient.from("caixa").delete().eq("id", id);
+    if(rec && rec.estoqueRefId){ await supabaseClient.from("estoque").delete().eq("id", rec.estoqueRefId); }
+  }
+}
+function renderCaixa(){
+  const tbody = document.querySelector("#tabela_caixa tbody");
+  tbody.innerHTML = "";
+  document.getElementById("caixa_empty").style.display = db.caixa.length ? "none" : "block";
+  const now = new Date(); const ymPrefix = now.toISOString().slice(0,7);
+  let entrouMes=0, saiuMes=0;
+  db.caixa.forEach(c=>{
+    if(c.data && c.data.startsWith(ymPrefix)){ entrouMes+=Number(c.entrou)||0; saiuMes+=Number(c.saiu)||0; }
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${formatDateBR(c.data)}</td><td class="num">${fmtR(c.entrou)}</td><td class="num">${fmtR(c.saiu)}</td>
+      <td class="num"><b style="color:${c.sobrou>=0?'#3fae5a':'#e08070'}">${fmtR(c.sobrou)}</b></td>
+      <td>${c.obs||""}${c.estoqueRefId?' <span class="badge" style="background:var(--amberBg); color:var(--amber);">baixou estoque</span>':''}</td><td><button class="btn-sm delbtn" onclick="delCaixa('${c.id}')">Excluir</button></td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById("kpi_entrou").textContent = fmtR(entrouMes);
+  document.getElementById("kpi_saiu").textContent = fmtR(saiuMes);
+  document.getElementById("kpi_sobrou").textContent = fmtR(entrouMes-saiuMes);
+  const breakeven = 10571;
+  document.getElementById("kpi_breakeven").textContent = fmtR(Math.max(0, breakeven - entrouMes));
+  renderDashboard();
+}
+function formatDateBR(iso){
+  if(!iso) return "";
+  const [y,m,d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+// ===================== ESTOQUE =====================
+async function addEstoqueEntrada(){
+  const data = document.getElementById("es_data_in").value || new Date().toISOString().slice(0,10);
+  const codigo = document.getElementById("es_codigo").value.trim();
+  const nota = parseFloat(document.getElementById("es_nota").value)||0;
+  const balanca = parseFloat(document.getElementById("es_balanca").value)||0;
+  const limpo = parseFloat(document.getElementById("es_limpo").value)||0;
+  const validade = document.getElementById("es_validade").value || null;
+  if(nota<=0 && balanca<=0){ alert("Informe ao menos o kg da nota ou da balança."); return; }
+  const recebPct = nota>0 ? (balanca/nota*100) : null;
+  const novo = { id: uid(), data, tipo: "entrada", kg: balanca||nota, nota, balanca, limpo, recebPct, codigo, validade };
+  db.estoque.push(novo);
+  db.estoque.sort((a,b)=> a.data < b.data ? 1 : -1);
+  saveDB();
+  if(cloudConnected){ await supabaseClient.from("estoque").insert({...novo, receb_pct: novo.recebPct}); }
+  document.getElementById("es_codigo").value = "";
+  document.getElementById("es_nota").value = "";
+  document.getElementById("es_balanca").value = "";
+  document.getElementById("es_limpo").value = "";
+  document.getElementById("es_validade").value = "";
+  document.getElementById("es_scan_hint").style.color = "";
+  document.getElementById("es_scan_hint").textContent = "Escanear é opcional — serve pra guardar de qual entrega é essa entrada. O peso da nota e da balança você sempre confere e digita abaixo.";
+  renderEstoque();
+}
+async function addEstoqueSaida(){
+  const data = document.getElementById("es_data_out").value || new Date().toISOString().slice(0,10);
+  const vendido = parseFloat(document.getElementById("es_vendido").value)||0;
+  const obs = document.getElementById("es_obs_out").value;
+  if(vendido<=0){ alert("Informe o kg vendido."); return; }
+  const novo = { id: uid(), data, tipo: "saida", kg: vendido, obs };
+  db.estoque.push(novo);
+  db.estoque.sort((a,b)=> a.data < b.data ? 1 : -1);
+  saveDB();
+  if(cloudConnected){ await supabaseClient.from("estoque").insert(novo); }
+  document.getElementById("es_vendido").value = "";
+  document.getElementById("es_obs_out").value = "";
+  renderEstoque();
+}
+async function addEstoquePerda(){
+  const data = document.getElementById("es_data_perda").value || new Date().toISOString().slice(0,10);
+  const kg = parseFloat(document.getElementById("es_perda_kg").value)||0;
+  const motivo = document.getElementById("es_perda_motivo").value;
+  if(kg<=0){ alert("Informe o kg perdido."); return; }
+  const novo = { id: uid(), data, tipo: "perda", kg, obs: motivo };
+  db.estoque.push(novo);
+  db.estoque.sort((a,b)=> a.data < b.data ? 1 : -1);
+  saveDB();
+  if(cloudConnected){ await supabaseClient.from("estoque").insert(novo); }
+  document.getElementById("es_perda_kg").value = "";
+  renderEstoque();
+}
+async function delEstoque(id){
+  db.estoque = db.estoque.filter(e=>e.id!==id);
+  saveDB(); renderEstoque();
+  if(cloudConnected){ await supabaseClient.from("estoque").delete().eq("id", id); }
+}
+function diasAte(iso){
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const alvo = new Date(iso+"T00:00:00");
+  return Math.round((alvo-hoje)/86400000);
+}
+function renderEstoque(){
+  const tbody = document.querySelector("#tabela_estoque tbody");
+  tbody.innerHTML = "";
+  document.getElementById("estoque_empty").style.display = db.estoque.length ? "none" : "block";
+  let saldo=0, recebs=[], rends=[], perdasMes=0;
+  const now = new Date(); const ymPrefix = now.toISOString().slice(0,7);
+  const badgeInfo = { entrada:["badge-green","Entrada"], saida:["badge-red","Saída"], perda:["", "Perda"] };
+  db.estoque.forEach(e=>{
+    if(e.tipo==="entrada"){ saldo += Number(e.limpo||e.kg)||0; if(e.recebPct) recebs.push(e.recebPct);
+      if(e.nota>0 && e.limpo>0) rends.push(e.limpo/e.nota*100);
+    } else {
+      saldo -= Number(e.kg)||0;
+      if(e.tipo==="perda" && e.data && e.data.startsWith(ymPrefix)) perdasMes += Number(e.kg)||0;
+    }
+    const tr = document.createElement("tr");
+    const detalhe = e.tipo==="entrada"
+      ? `Nota: ${fmtKg(e.nota)} · Balança: ${fmtKg(e.balanca)}${e.limpo?(' · Limpo: '+fmtKg(e.limpo)):''}${e.recebPct?(' · Receb: '+e.recebPct.toFixed(1)+'%'):''}${e.codigo?(' · Nº nota: '+e.codigo):''}${e.validade?(' · Val: '+formatDateBR(e.validade)):''}`
+      : (e.obs||"");
+    const [badgeClass, badgeLabel] = badgeInfo[e.tipo] || ["badge-red", e.tipo];
+    const badgeStyle = e.tipo==="perda" ? ' style="background:var(--amberBg); color:var(--amber);"' : "";
+    tr.innerHTML = `<td>${formatDateBR(e.data)}</td>
+      <td><span class="badge ${badgeClass}"${badgeStyle}>${badgeLabel}</span></td>
+      <td class="num">${fmtKg(e.kg)}</td><td style="font-size:11px; color:var(--muted);">${detalhe}</td>
+      <td><button class="btn-sm delbtn" onclick="delEstoque('${e.id}')">Excluir</button></td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById("kpi_estoque_saldo").textContent = fmtKg(saldo);
+  document.getElementById("kpi_rendimento_medio").textContent = rends.length ? (rends.reduce((a,b)=>a+b,0)/rends.length).toFixed(1)+"%" : "—";
+  document.getElementById("kpi_receb_medio").textContent = recebs.length ? (recebs.reduce((a,b)=>a+b,0)/recebs.length).toFixed(1)+"%" : "—";
+  document.getElementById("kpi_perdas_mes").textContent = fmtKg(perdasMes);
+
+  const vencendo = db.estoque
+    .filter(e=>e.tipo==="entrada" && e.validade)
+    .map(e=>({...e, dias: diasAte(e.validade)}))
+    .filter(e=>e.dias<=3)
+    .sort((a,b)=>a.dias-b.dias);
+  const banner = document.getElementById("vencimentoBanner");
+  if(vencendo.length){
+    banner.style.display = "block";
+    document.getElementById("vencimentoLista").innerHTML = vencendo.map(e=>{
+      const situacao = e.dias<0 ? `venceu há ${Math.abs(e.dias)} dia(s)` : e.dias===0 ? "vence hoje" : `vence em ${e.dias} dia(s)`;
+      return `${fmtKg(e.kg)}${e.codigo?(' — Nº nota: '+e.codigo):''} — <b>${situacao}</b>`;
+    }).join("<br>");
+  } else {
+    banner.style.display = "none";
+  }
+  renderDashboard();
+}
+
+// ===================== BACKUP =====================
+function exportData(){
+  const blob = new Blob([JSON.stringify(db, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "emporio_magnata_backup_" + new Date().toISOString().slice(0,10) + ".json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function importData(ev){
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const data = JSON.parse(e.target.result);
+      if(data.produtos && data.caixa && data.estoque){
+        db = data; saveDB();
+        renderProdutos(); renderCaixa(); renderEstoque(); renderDashboard();
+        alert("Backup importado com sucesso!");
+      } else { alert("Arquivo inválido."); }
+    }catch(err){ alert("Erro ao ler o arquivo: " + err.message); }
+  };
+  reader.readAsText(file);
+}
+function limparTudo(){
+  if(confirm("Tem certeza? Isso vai apagar TODOS os produtos, lançamentos de caixa e estoque salvos neste navegador. Essa ação não pode ser desfeita.")){
+    db = { produtos: [], caixa: [], estoque: [] };
+    saveDB();
+    renderProdutos(); renderCaixa(); renderEstoque(); renderDashboard();
+  }
+}
+
+// ===================== INIT =====================
+document.getElementById("cx_data").valueAsDate = new Date();
+document.getElementById("es_data_in").valueAsDate = new Date();
+document.getElementById("es_data_out").valueAsDate = new Date();
+document.getElementById("es_data_perda").valueAsDate = new Date();
+popularCortes();
+renderProdutos();
+renderCaixa();
+renderEstoque();
+renderDashboard();
+updateConnStatus();
+
+// tentar reconectar automaticamente se já tinha config salva
+(async function autoConnect(){
+  const savedUrl = localStorage.getItem("em_sb_url");
+  const savedKey = localStorage.getItem("em_sb_key");
+  if(savedUrl && savedKey){
+    document.getElementById("sb_url").value = savedUrl;
+    document.getElementById("sb_key").value = savedKey;
+    try{
+      supabaseClient = supabase.createClient(savedUrl, savedKey);
+      const { error } = await supabaseClient.from("produtos").select("id").limit(1);
+      if(error) throw error;
+      cloudConnected = true;
+      updateConnStatus();
+      await syncFromCloud();
+    }catch(e){ console.warn("Reconexão automática falhou:", e.message); }
+  }
+})();
+</script>
+</body>
+</html>
