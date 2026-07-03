@@ -469,6 +469,7 @@
           <strong style="font-size:12px;color:#e08070;">SAÍDAS</strong>
           <label>Fornecedor (carne)</label><input type="number" id="cx_forn" step="0.01" value="0">
           <label>Insumos / embalagem</label><input type="number" id="cx_insumo" step="0.01" value="0">
+          <label>Funcionário (salário, diária, vale)</label><input type="number" id="cx_func" step="0.01" value="0">
           <label>Contas (energia, aluguel...)</label><input type="number" id="cx_conta" step="0.01" value="0">
           <label>Retirada pessoal (diária da família)</label><input type="number" id="cx_retirada" step="0.01" value="0">
           <label>Outros</label><input type="number" id="cx_outros" step="0.01" value="0">
@@ -583,6 +584,7 @@
       </p>
       <button class="btn secondary" onclick="copiarSQL()" style="margin-bottom:10px;">📋 Copiar código SQL das tabelas</button>
       <div class="footer-note" style="margin-bottom:10px;">Já tinha conectado a nuvem antes de julho/2026? Rode isso também no SQL Editor, uma vez só: <code style="color:#e8b4a8;">alter table caixa add column estoque_ref_id text; alter table estoque add column codigo text; alter table estoque add column validade date;</code></div>
+      <div class="footer-note" style="margin-bottom:10px;">Já tinha conectado a nuvem antes de 03/07/2026? Rode isso também, uma vez só: <code style="color:#e8b4a8;">alter table caixa add column saiu_forn numeric; alter table caixa add column saiu_insumo numeric; alter table caixa add column saiu_func numeric; alter table caixa add column saiu_conta numeric; alter table caixa add column saiu_retirada numeric; alter table caixa add column saiu_outros numeric;</code></div>
       <label>Project URL</label>
       <input type="text" id="sb_url" placeholder="https://xxxxxxxx.supabase.co">
       <label>Anon public key</label>
@@ -622,6 +624,7 @@ const SQL_SCHEMA = `create table produtos (
 create table caixa (
   id text primary key,
   data date, entrou numeric, saiu numeric, sobrou numeric, obs text, estoque_ref_id text,
+  saiu_forn numeric, saiu_insumo numeric, saiu_func numeric, saiu_conta numeric, saiu_retirada numeric, saiu_outros numeric,
   created_at timestamp default now()
 );
 create table estoque (
@@ -687,7 +690,8 @@ async function syncFromCloud(){
       supabaseClient.from("estoque").select("*").order("data",{ascending:false}),
     ]);
     db.produtos = (prod||[]).map(p=>({id:p.id, nome:p.nome, categoria:p.categoria, custo:p.custo, preco:p.preco, codigoBarras:p.codigo_barras}));
-    db.caixa = (cx||[]).map(c=>({id:c.id, data:c.data, entrou:c.entrou, saiu:c.saiu, sobrou:c.sobrou, obs:c.obs, estoqueRefId:c.estoque_ref_id}));
+    db.caixa = (cx||[]).map(c=>({id:c.id, data:c.data, entrou:c.entrou, saiu:c.saiu, sobrou:c.sobrou, obs:c.obs, estoqueRefId:c.estoque_ref_id,
+      saiuForn:c.saiu_forn, saiuInsumo:c.saiu_insumo, saiuFunc:c.saiu_func, saiuConta:c.saiu_conta, saiuRetirada:c.saiu_retirada, saiuOutros:c.saiu_outros}));
     db.estoque = (es||[]).map(e=>({id:e.id, data:e.data, tipo:e.tipo, kg:e.kg, nota:e.nota, balanca:e.balanca, limpo:e.limpo, recebPct:e.receb_pct, obs:e.obs, codigo:e.codigo, validade:e.validade}));
     saveDB(true);
     renderProdutos(); renderCaixa(); renderEstoque(); renderDashboard();
@@ -1006,10 +1010,17 @@ function buscarPorCodigo(codigo){
 async function addCaixa(){
   const data = document.getElementById("cx_data").value || new Date().toISOString().slice(0,10);
   const entrou = ["cx_din","cx_pix","cx_deb","cx_cred","cx_fiado"].reduce((s,id)=>s+(parseFloat(document.getElementById(id).value)||0),0);
-  const saiu = ["cx_forn","cx_insumo","cx_conta","cx_retirada","cx_outros"].reduce((s,id)=>s+(parseFloat(document.getElementById(id).value)||0),0);
+  const forn = parseFloat(document.getElementById("cx_forn").value)||0;
+  const insumo = parseFloat(document.getElementById("cx_insumo").value)||0;
+  const func = parseFloat(document.getElementById("cx_func").value)||0;
+  const conta = parseFloat(document.getElementById("cx_conta").value)||0;
+  const retirada = parseFloat(document.getElementById("cx_retirada").value)||0;
+  const outros = parseFloat(document.getElementById("cx_outros").value)||0;
+  const saiu = forn+insumo+func+conta+retirada+outros;
   const obs = document.getElementById("cx_obs").value;
   const kgVendido = parseFloat(document.getElementById("cx_kg_vendido").value)||0;
-  const novo = { id: uid(), data, entrou, saiu, sobrou: entrou-saiu, obs };
+  const novo = { id: uid(), data, entrou, saiu, sobrou: entrou-saiu, obs,
+    saiuForn: forn, saiuInsumo: insumo, saiuFunc: func, saiuConta: conta, saiuRetirada: retirada, saiuOutros: outros };
 
   let estoqueRef = null;
   if(kgVendido > 0){
@@ -1022,10 +1033,11 @@ async function addCaixa(){
   if(estoqueRef){ db.estoque.push(estoqueRef); db.estoque.sort((a,b)=> a.data < b.data ? 1 : -1); }
   saveDB();
   if(cloudConnected){
-    await supabaseClient.from("caixa").insert({ id: novo.id, data: novo.data, entrou: novo.entrou, saiu: novo.saiu, sobrou: novo.sobrou, obs: novo.obs, estoque_ref_id: novo.estoqueRefId||null });
+    await supabaseClient.from("caixa").insert({ id: novo.id, data: novo.data, entrou: novo.entrou, saiu: novo.saiu, sobrou: novo.sobrou, obs: novo.obs, estoque_ref_id: novo.estoqueRefId||null,
+      saiu_forn: novo.saiuForn, saiu_insumo: novo.saiuInsumo, saiu_func: novo.saiuFunc, saiu_conta: novo.saiuConta, saiu_retirada: novo.saiuRetirada, saiu_outros: novo.saiuOutros });
     if(estoqueRef){ await supabaseClient.from("estoque").insert(estoqueRef); }
   }
-  ["cx_din","cx_pix","cx_deb","cx_cred","cx_fiado","cx_forn","cx_insumo","cx_conta","cx_retirada","cx_outros","cx_kg_vendido"].forEach(id=>document.getElementById(id).value="0");
+  ["cx_din","cx_pix","cx_deb","cx_cred","cx_fiado","cx_forn","cx_insumo","cx_func","cx_conta","cx_retirada","cx_outros","cx_kg_vendido"].forEach(id=>document.getElementById(id).value="0");
   document.getElementById("cx_obs").value = "";
   renderCaixa(); renderEstoque();
 }
